@@ -3531,6 +3531,7 @@ const enderecos = [
 { "rua": "24 de Maio", "cep": "11756-728", "faixa": "r - Jamaica (Interior)" },
 { "rua": "7 de Setembro", "cep": "11742-034", "faixa": "pç - Jd Suarão (Interior)" },
 { "rua": "9 de Julho", "cep": "11740-006", "faixa": "r - Centro" },
+]
 
 // Normaliza texto (remove acentos, maiúsculas etc) - VERSÃO ÚNICA
 function normalizar(texto = "") {
@@ -3604,6 +3605,7 @@ if ("serviceWorker" in navigator) {
       });
   });
 }
+
 
 
 
