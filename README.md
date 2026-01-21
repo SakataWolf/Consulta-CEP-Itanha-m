@@ -218,6 +218,4 @@ self.addEventListener("fetch", event => {
 - Importar automaticamente o PDF oficial de CEPs
 - Autocomplete de ruas
 - Botão copiar CEP
-- Histórico de consultas
-- Logo e identidade visual da empresa
 
