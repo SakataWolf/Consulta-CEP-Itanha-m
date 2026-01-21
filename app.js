@@ -3543,6 +3543,22 @@ function normalizar(texto = "") {
     .trim();
 }
 
+// ✅ FUNÇÃO GLOBAL
+function copiarCEP(rua, cep, faixa) {
+  const texto =
+`Rua: ${rua}
+CEP: ${cep}
+${faixa ? "Bairro: " + faixa : ""}`;
+
+  navigator.clipboard.writeText(texto)
+    .then(() => {
+      alert("CEP copiado com sucesso!");
+    })
+    .catch(() => {
+      alert("Não foi possível copiar o CEP.");
+    });
+}
+
 function consultarCEP() {
   const inputEl = document.getElementById("endereco");
   const resultado = document.getElementById("resultado");
@@ -3561,7 +3577,7 @@ function consultarCEP() {
 
     const palavras = textoDigitado
       .split(" ")
-      .filter(p => p.length > 2); // ignora palavras curtas
+      .filter(p => p.length > 2);
 
     if (palavras.length === 0) return false;
 
@@ -3581,14 +3597,25 @@ function consultarCEP() {
       <div style="margin-top:10px">
         <strong>${e.rua}</strong><br>
         CEP: <strong>${e.cep}</strong><br>
-        ${e.faixa ? `<small>${e.faixa}</small>` : ""}
+        ${e.faixa ? `<small>${e.faixa}</small>` : ""}<br>
+
+        <button
+          style="margin-top:6px"
+          onclick="copiarCEP(
+            '${e.rua}',
+            '${e.cep}',
+            '${e.faixa || ""}'
+          )">
+          Copiar CEP
+        </button>
+
         <hr>
       </div>
     `;
   });
 }
 
-// Registro do Service Worker
+// Registro do Service Worker (fora de tudo)
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     navigator.serviceWorker
