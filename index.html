@@ -3,33 +3,490 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
+  
+  <meta name="theme-color" content="#15102a">
+  <meta name="description" content="Consulta de CEP e verificação de estrutura para Itanhaém">
+  
   <title>Consulta CEP - Itanhaém</title>
 
   <link rel="stylesheet" href="style.css" />
   <link rel="manifest" href="manifest.json" />
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
+
+  <!-- JSZip para ler KMZ -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 </head>
 
 <body>
   <div class="container">
-    <h1>Consulta CEP - Itanhaém</h1>
-    <p>Digite o nome da rua (com ou sem número)</p>
+    <header>
+      <h1>📍 Consulta CEP - Itanhaém</h1>
+      <p>Digite o nome da rua (com ou sem número)</p>
+      <p class="small-note" id="contador-ruas">Carregando dados...</p>
+    </header>
 
-    <label for="endereco" class="sr-only">Endereço</label>
-    <input
-      type="text"
-      id="endereco"
-      placeholder="Ex: Av. Rui Barbosa 123"
-      autocomplete="off"
-      oninput="consultarCEP()"
-    />
+    <!-- CONSULTA CEP -->
+    <section class="secao-consulta">
+      <h2>🔍 Consulta de CEP</h2>
+      
+      <div class="input-group">
+        <input
+          type="text"
+          id="endereco"
+          placeholder="Ex: Avenida Harry Forssell ou Anchieta"
+          autocomplete="off"
+          aria-label="Endereço para consulta de CEP"
+        />
+        <button onclick="consultarCEP()" class="btn-consulta">
+          Buscar CEP
+        </button>
+      </div>
+      
+      <!-- Sugestões em tempo real -->
+      <div class="sugestoes" id="sugestoesContainer" style="display: none;">
+        <p class="sugestoes-titulo">Sugestões:</p>
+        <div id="sugestoesLista"></div>
+      </div>
+      
+      <!-- Resultados -->
+      <div id="resultado" class="resultado-container"></div>
+      
+      <!-- Dicas de busca -->
+      <div class="dicas">
+        <small>💡 Dica: busque por palavras-chave como "Anchieta", "Harry Forssell", "Gaivota"</small>
+      </div>
+    </section>
 
-    <div id="resultado"></div>
+    <!-- SEPARADOR -->
+    <div class="separador">
+      <div class="linha"></div>
+      <div class="icone">⚡</div>
+      <div class="linha"></div>
+    </div>
+
+    <!-- VERIFICAÇÃO DE ESTRUTURA -->
+    <section class="secao-estrutura">
+      <h2>🏗️ Verificar Estrutura</h2>
+      
+      <p class="subtitulo">
+        Selecione o arquivo KMZ com os postes estruturais
+      </p>
+
+      <!-- INPUT DE ARQUIVO ESTILIZADO -->
+      <div class="file-upload-area" onclick="document.getElementById('kmzInput').click()">
+        <div class="file-upload-icon">📁</div>
+        <div class="file-upload-text">
+          <span id="fileUploadText">Clique para selecionar arquivos KMZ/KML</span>
+          <small id="fileCount">Nenhum arquivo selecionado</small>
+        </div>
+        <input
+          type="file"
+          id="kmzInput"
+          accept=".kmz,.kml"
+          multiple
+          aria-label="Selecionar arquivos KMZ ou KML"
+          style="display: none;"
+        />
+      </div>
+
+      <div class="input-group">
+        <input
+          type="text"
+          id="enderecoEstrutura"
+          placeholder="Ex: Rua João Mariano, 100"
+          autocomplete="off"
+          aria-label="Endereço para verificação de estrutura"
+        />
+        <button onclick="verificarEstruturaLocal()" class="btn-estrutura">
+          Verificar Estrutura
+        </button>
+      </div>
+      
+      <div id="resultadoEstrutura" class="resultado-container"></div>
+    </section>
+
+    <!-- INFORMAÇÕES -->
+    <div class="info-card">
+      <h3>📋 Informações</h3>
+      <div class="info-content">
+        <p><strong>Base de dados:</strong> <span id="total-registros">...</span> ruas de Itanhaém</p>
+        <p><strong>Formato aceito:</strong> KMZ, KML (com coordenadas de postes)</p>
+        <p><strong>Resultados:</strong></p>
+        <ul class="info-lista">
+          <li><span class="status-indicador verde-pequeno"></span> ≤ 200m: Tem estrutura</li>
+          <li><span class="status-indicador amarelo-pequeno"></span> ≤ 400m: Necessário análise</li>
+          <li><span class="status-indicador vermelho-pequeno"></span> > 400m: Sem estrutura</li>
+        </ul>
+        <p class="info-footer">Atualizado em 2024 | Itanhaém/SP</p>
+      </div>
+    </div>
+
+    <!-- ESTATÍSTICAS RÁPIDAS -->
+    <div class="estatisticas">
+      <h3>📊 Estatísticas</h3>
+      <div class="estat-grid">
+        <div class="estat-item">
+          <div class="estat-numero" id="total-bairros">--</div>
+          <div class="estat-label">Bairros</div>
+        </div>
+        <div class="estat-item">
+          <div class="estat-numero" id="total-avenidas">--</div>
+          <div class="estat-label">Avenidas</div>
+        </div>
+        <div class="estat-item">
+          <div class="estat-numero" id="total-ruas">--</div>
+          <div class="estat-label">Ruas</div>
+        </div>
+      </div>
+    </div>
+
   </div>
 
-  <!-- JS carregado corretamente -->
-  <script src="app.js" defer></script>
+  <!-- IMPORTANTE: DADOS REAIS VÊM DO app.js -->
+  <!-- app.js deve conter: window.enderecos = [...] -->
+  <script src="app.js"></script>
+  
+  <!-- Script para melhorias de interface -->
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      // Verificar se os dados estão carregados
+      function verificarDados() {
+        if (window.enderecos && Array.isArray(window.enderecos)) {
+          // Atualizar contadores
+          const total = window.enderecos.length;
+          document.getElementById('contador-ruas').innerHTML = 
+            `<strong>${total}</strong> ruas cadastradas`;
+          document.getElementById('total-registros').textContent = total;
+          
+          // Estatísticas
+          const avenidas = window.enderecos.filter(e => 
+            e.rua.toLowerCase().includes('av.') || 
+            e.rua.toLowerCase().includes('avenida') ||
+            (e.faixa && e.faixa.toLowerCase().includes('av'))
+          ).length;
+          
+          // Extrair bairros únicos
+          const bairrosSet = new Set();
+          window.enderecos.forEach(e => {
+            if (e.faixa) {
+              const partes = e.faixa.split(' - ');
+              if (partes.length > 1) {
+                bairrosSet.add(partes[1]);
+              }
+            }
+          });
+          
+          document.getElementById('total-bairros').textContent = bairrosSet.size;
+          document.getElementById('total-avenidas').textContent = avenidas;
+          document.getElementById('total-ruas').textContent = total - avenidas;
+          
+        } else {
+          // Tentar novamente após 1 segundo
+          setTimeout(verificarDados, 1000);
+        }
+      }
+      
+      verificarDados();
+      
+      // AUTO-COMPLETE
+      const enderecoInput = document.getElementById('endereco');
+      const sugestoesContainer = document.getElementById('sugestoesContainer');
+      const sugestoesLista = document.getElementById('sugestoesLista');
+      
+      if (enderecoInput) {
+        let timeoutBusca;
+        
+        enderecoInput.addEventListener('input', function() {
+          clearTimeout(timeoutBusca);
+          timeoutBusca = setTimeout(() => {
+            const termo = this.value.trim();
+            
+            if (termo.length < 2) {
+              sugestoesContainer.style.display = 'none';
+              return;
+            }
+            
+            if (!window.enderecos || !Array.isArray(window.enderecos)) {
+              console.error('Dados de endereços não carregados!');
+              return;
+            }
+            
+            const termoNormalizado = normalizar(termo);
+            const sugestoes = window.enderecos
+              .filter(end => {
+                if (!end.rua) return false;
+                const ruaNormalizada = normalizar(end.rua);
+                return ruaNormalizada.includes(termoNormalizado);
+              })
+              .slice(0, 6); // Limitar a 6 sugestões
+            
+            if (sugestoes.length === 0) {
+              sugestoesContainer.style.display = 'none';
+              return;
+            }
+            
+            sugestoesLista.innerHTML = '';
+            sugestoes.forEach(end => {
+              const div = document.createElement('div');
+              div.className = 'sugestao-item';
+              div.innerHTML = `
+                <strong>${end.rua}</strong>
+                ${end.faixa ? `<br><small>${end.faixa}</small>` : ''}
+              `;
+              div.onclick = () => {
+                enderecoInput.value = end.rua;
+                sugestoesContainer.style.display = 'none';
+                consultarCEP();
+              };
+              sugestoesLista.appendChild(div);
+            });
+            
+            sugestoesContainer.style.display = 'block';
+          }, 300); // Debounce de 300ms
+        });
+        
+        // Fechar sugestões ao clicar fora
+        document.addEventListener('click', function(e) {
+          if (!enderecoInput.contains(e.target) && !sugestoesContainer.contains(e.target)) {
+            sugestoesContainer.style.display = 'none';
+          }
+        });
+        
+        // Enter para buscar
+        enderecoInput.addEventListener('keypress', function(e) {
+          if (e.key === 'Enter') {
+            sugestoesContainer.style.display = 'none';
+            consultarCEP();
+          }
+        });
+        
+        // Foco no input ao carregar
+        enderecoInput.focus();
+      }
+      
+      // Gerenciamento de arquivos KMZ
+      const kmzInput = document.getElementById('kmzInput');
+      const fileUploadText = document.getElementById('fileUploadText');
+      const fileCount = document.getElementById('fileCount');
+      
+      if (kmzInput) {
+        kmzInput.addEventListener('change', function() {
+          const files = this.files;
+          if (files.length > 0) {
+            fileUploadText.textContent = `${files.length} arquivo(s) selecionado(s)`;
+            fileCount.textContent = files.length === 1 ? files[0].name : `${files.length} arquivos`;
+            fileCount.style.color = '#8c6cff';
+            
+            // Feedback visual
+            const uploadArea = document.querySelector('.file-upload-area');
+            uploadArea.style.borderColor = '#8c6cff';
+            uploadArea.style.background = 'rgba(140, 108, 255, 0.08)';
+            
+          } else {
+            fileUploadText.textContent = 'Clique para selecionar arquivos KMZ/KML';
+            fileCount.textContent = 'Nenhum arquivo selecionado';
+            fileCount.style.color = '#8f8ab8';
+          }
+        });
+      }
+      
+      // Enter no input de estrutura
+      const enderecoEstruturaInput = document.getElementById('enderecoEstrutura');
+      if (enderecoEstruturaInput) {
+        enderecoEstruturaInput.addEventListener('keypress', function(e) {
+          if (e.key === 'Enter') {
+            verificarEstruturaLocal();
+          }
+        });
+      }
+      
+      // Drag and Drop para KMZ
+      const fileUploadArea = document.querySelector('.file-upload-area');
+      if (fileUploadArea) {
+        fileUploadArea.addEventListener('dragover', function(e) {
+          e.preventDefault();
+          this.style.background = 'rgba(140, 108, 255, 0.15)';
+          this.style.borderColor = '#8c6cff';
+          this.style.transform = 'scale(1.02)';
+        });
+        
+        fileUploadArea.addEventListener('dragleave', function() {
+          this.style.background = '#0c0a1a';
+          this.style.borderColor = 'rgba(140, 110, 255, 0.35)';
+          this.style.transform = 'scale(1)';
+        });
+        
+        fileUploadArea.addEventListener('drop', function(e) {
+          e.preventDefault();
+          this.style.background = '#0c0a1a';
+          this.style.borderColor = 'rgba(140, 110, 255, 0.35)';
+          this.style.transform = 'scale(1)';
+          
+          // Processar arquivos soltos
+          if (kmzInput) {
+            kmzInput.files = e.dataTransfer.files;
+            kmzInput.dispatchEvent(new Event('change'));
+          }
+        });
+      }
+    });
+    
+    // Função normalizar (deve ser igual à do app.js)
+    function normalizar(texto = "") {
+      return texto
+        .toString()
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-z0-9 ]/g, "")
+        .trim();
+    }
+  </script>
+  
+  <!-- Estilos adicionais -->
+  <style>
+    .small-note {
+      font-size: 0.85rem;
+      color: #8f8ab8;
+      margin-top: 5px;
+      font-style: italic;
+    }
+    
+    .small-note strong {
+      color: #8c6cff;
+    }
+    
+    .sugestoes {
+      background: rgba(12, 10, 26, 0.95);
+      border: 1px solid rgba(140, 110, 255, 0.3);
+      border-radius: 8px;
+      margin: 10px 0;
+      padding: 12px;
+      max-height: 250px;
+      overflow-y: auto;
+      backdrop-filter: blur(10px);
+      z-index: 100;
+      position: relative;
+    }
+    
+    .sugestoes-titulo {
+      margin: 0 0 10px 0;
+      color: #8f8ab8;
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+    
+    .sugestao-item {
+      padding: 10px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+      color: #c4c2d8;
+      font-size: 0.9rem;
+      margin-bottom: 6px;
+      border-left: 3px solid transparent;
+    }
+    
+    .sugestao-item:hover {
+      background: rgba(140, 108, 255, 0.1);
+      color: #fff;
+      border-left-color: #8c6cff;
+      transform: translateX(2px);
+    }
+    
+    .sugestao-item small {
+      color: #8f8ab8;
+      font-size: 0.8rem;
+    }
+    
+    .sugestao-item:last-child {
+      margin-bottom: 0;
+    }
+    
+    .dicas {
+      margin-top: 10px;
+      padding: 8px 12px;
+      background: rgba(140, 108, 255, 0.05);
+      border-radius: 6px;
+      border-left: 3px solid #8c6cff;
+    }
+    
+    .dicas small {
+      color: #8f8ab8;
+      font-size: 0.8rem;
+    }
+    
+    .info-footer {
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+      font-size: 0.85rem;
+      color: #8f8ab8;
+      text-align: center;
+    }
+    
+    .estatisticas {
+      background: rgba(12, 10, 26, 0.6);
+      border: 1px solid rgba(140, 110, 255, 0.2);
+      border-radius: 12px;
+      padding: 20px;
+      margin-top: 25px;
+    }
+    
+    .estatisticas h3 {
+      margin-top: 0;
+      margin-bottom: 15px;
+      color: #fff;
+      font-size: 1.1rem;
+    }
+    
+    .estat-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 15px;
+    }
+    
+    .estat-item {
+      text-align: center;
+      padding: 15px;
+      background: rgba(140, 108, 255, 0.08);
+      border-radius: 8px;
+      transition: all 0.3s;
+    }
+    
+    .estat-item:hover {
+      background: rgba(140, 108, 255, 0.12);
+      transform: translateY(-2px);
+    }
+    
+    .estat-numero {
+      font-size: 1.8rem;
+      font-weight: bold;
+      color: #8c6cff;
+      margin-bottom: 5px;
+    }
+    
+    .estat-label {
+      font-size: 0.85rem;
+      color: #8f8ab8;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    
+    @media (max-width: 600px) {
+      .estat-grid {
+        grid-template-columns: 1fr;
+        gap: 10px;
+      }
+      
+      .estat-item {
+        padding: 12px;
+      }
+      
+      .estat-numero {
+        font-size: 1.5rem;
+      }
+    }
+  </style>
 </body>
 </html>
-
-
