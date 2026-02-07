@@ -1,4 +1,4 @@
-const enderecos = [
+window.enderecos = [
 { "rua": "A (Est Ipanema)", "cep": "11752-288", "faixa": "av - Jd Anchieta" },
 { "rua": "A (Est Ipanema)", "cep": "11752-278", "faixa": "r - Jd Anchieta" },
 { "rua": "A (Pq Evelyn)", "cep": "11751-554", "faixa": "r - Jd Anchieta" },
@@ -3636,5 +3636,454 @@ if ("serviceWorker" in navigator) {
 }
 
 
+// app.js - Consulta CEP e Verificação de Estrutura
+let postes = [];
+let arquivosCarregados = 0;
+let caixas = [];
 
+// ============================================
+// FUNÇÕES DE CARREGAMENTO DE ARQUIVOS KMZ/KML
+// ============================================
 
+async function carregarArquivosKMZ(event) {
+  const files = Array.from(event.target.files);
+
+  if (!files.length) return;
+
+  postes = [];
+  arquivosCarregados = 0;
+
+  const box = document.getElementById("resultadoEstrutura");
+  box.innerHTML = "📂 Carregando arquivos...";
+
+  for (const file of files) {
+    try {
+      await processarArquivo(file);
+      arquivosCarregados++;
+    } catch (e) {
+      console.warn("Erro ao processar:", file.name, e);
+    }
+  }
+
+  box.innerHTML = `
+    ✅ Arquivos carregados: <b>${arquivosCarregados}</b><br>
+    📍 Postes estruturais válidos: <b>${postes.length}</b>
+  `;
+
+  console.log("Postes finais:", postes);
+}
+
+async function processarArquivo(file) {
+  let kmlText = "";
+
+  if (file.name.toLowerCase().endsWith(".kmz")) {
+    const zip = await JSZip.loadAsync(file);
+    const kmlFile = zip.file(/\.kml$/i)[0];
+    if (!kmlFile) return;
+    kmlText = await kmlFile.async("string");
+  } else if (file.name.toLowerCase().endsWith(".kml")) {
+    kmlText = await file.text();
+  } else {
+    return;
+  }
+
+  const xml = new DOMParser().parseFromString(kmlText, "text/xml");
+  extrairPostes(xml, file.name);
+}
+
+function extrairPostes(xml, origem) {
+  xml.querySelectorAll("Placemark").forEach(pm => {
+    const point = pm.querySelector("Point coordinates");
+    if (!point) return;
+
+    const nome = pm.querySelector("name")?.textContent?.trim() || "";
+    const nomeUpper = nome.toUpperCase();
+
+    const ehEstrutura =
+      nomeUpper.startsWith("P") ||
+      nomeUpper.startsWith("H") ||
+      nomeUpper.includes("POSTE") ||
+      nomeUpper.includes("CDO");
+
+    if (!ehEstrutura) return;
+
+    const coords = point.textContent.trim().split(",");
+    const lng = parseFloat(coords[0]);
+    const lat = parseFloat(coords[1]);
+
+    if (isNaN(lat) || isNaN(lng)) return;
+
+    postes.push({
+      nome: nome || "Poste",
+      lat,
+      lng,
+      origem
+    });
+  });
+}
+
+// ============================================
+// FUNÇÕES DE CÁLCULO DE DISTÂNCIA
+// ============================================
+
+function calcularDistancia(a, b) {
+  const R = 6371e3;
+  const φ1 = a.lat * Math.PI / 180;
+  const φ2 = b.lat * Math.PI / 180;
+  const Δφ = (b.lat - a.lat) * Math.PI / 180;
+  const Δλ = (b.lng - a.lng) * Math.PI / 180;
+
+  const x = Math.sin(Δφ / 2) ** 2 +
+    Math.cos(φ1) * Math.cos(φ2) *
+    Math.sin(Δλ / 2) ** 2;
+
+  return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
+}
+
+function posteMaisProximo(lat, lng) {
+  let menorDistancia = Infinity;
+  let posteMaisProximo = null;
+
+  postes.forEach(poste => {
+    const d = calcularDistancia(
+      { lat, lng },
+      { lat: poste.lat, lng: poste.lng }
+    );
+    if (d < menorDistancia) {
+      menorDistancia = d;
+      posteMaisProximo = poste;
+    }
+  });
+
+  return {
+    distancia: menorDistancia,
+    poste: posteMaisProximo
+  };
+}
+
+function caixaMaisProxima(lat, lng) {
+  let menor = 999999;
+  caixas.forEach(c => {
+    const d = calcularDistancia({ lat, lng }, c);
+    if (d < menor) menor = d;
+  });
+  return Math.round(menor);
+}
+
+// ============================================
+// FUNÇÕES DE FETCH COM TIMEOUT
+// ============================================
+
+async function fetchComTimeout(url, options = {}, timeout = 8000) {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeout);
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal
+    });
+    clearTimeout(id);
+    return response;
+  } catch (error) {
+    clearTimeout(id);
+    throw error;
+  }
+}
+
+// ============================================
+// FUNÇÃO PRINCIPAL DE VERIFICAÇÃO DE ESTRUTURA
+// ============================================
+
+async function verificarEstruturaLocal() {
+  const box = document.getElementById("resultadoEstrutura");
+
+  if (!postes || postes.length === 0) {
+    box.innerHTML = "⚠ Selecione primeiro o arquivo KMZ.";
+    return;
+  }
+
+  const endereco = document
+    .getElementById("enderecoEstrutura")
+    .value
+    .trim();
+
+  if (endereco.length < 5) {
+    box.innerHTML = "Digite o endereço completo.";
+    return;
+  }
+
+  box.innerHTML = "🔍 Consultando endereço...";
+
+  let geo;
+
+  try {
+    const url =
+      "https://nominatim.openstreetmap.org/search?" +
+      new URLSearchParams({
+        format: "jsonv2",
+        street: endereco,
+        city: "Itanhaém",
+        state: "SP",
+        country: "Brazil",
+        addressdetails: 1,
+        limit: 1
+      });
+
+    const r = await fetchComTimeout(
+      url,
+      {
+        headers: {
+          "Accept": "application/json",
+          "User-Agent": "VerificadorEstrutura/1.0 (suporte@local)"
+        }
+      },
+      8000
+    );
+
+    if (!r.ok) {
+      throw new Error("Resposta inválida do servidor");
+    }
+
+    const dados = await r.json();
+
+    if (!dados.length) {
+      box.innerHTML = "❌ Endereço não localizado.";
+      return;
+    }
+
+    geo = {
+      lat: parseFloat(dados[0].lat),
+      lng: parseFloat(dados[0].lon)
+    };
+  } catch (e) {
+    console.error(e);
+    box.innerHTML = "❌ Falha ao consultar endereço (timeout ou bloqueio).";
+    return;
+  }
+
+  const { distancia, poste } = posteMaisProximo(geo.lat, geo.lng);
+
+  let classe, texto;
+
+  if (distancia <= 200) {
+    classe = "verde";
+    texto = "🟢 TEM ESTRUTURA";
+  } else if (distancia <= 400) {
+    classe = "amarelo";
+    texto = "🟡 NECESSÁRIO ANÁLISE";
+  } else {
+    classe = "vermelho";
+    texto = "🔴 SEM ESTRUTURA";
+  }
+
+  box.innerHTML = `
+    <div class="status ${classe}">
+      ${texto}<br>
+      📍 Poste mais próximo: <b>${poste?.nome || "Desconhecido"}</b><br>
+      📏 Distância: <b>${distancia.toFixed(1)} metros</b>
+    </div>
+  `;
+}
+
+// ============================================
+// FUNÇÕES DE CONSULTA DE CEP
+// ============================================
+
+function normalizar(texto = "") {
+  return texto
+    .toString()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9 ]/g, "")
+    .trim();
+}
+
+function consultarCEP() {
+  const inputEl = document.getElementById("endereco");
+  const resultado = document.getElementById("resultado");
+
+  const textoDigitado = normalizar(inputEl.value);
+  resultado.innerHTML = "";
+
+  if (textoDigitado.replace(/\s/g, "").length < 3) {
+    resultado.innerHTML = "<small>Digite ao menos 3 letras úteis…</small>";
+    return;
+  }
+
+  // Supondo que 'enderecos' seja uma variável global definida em outro arquivo
+  // Se não estiver definida, você precisará carregar os dados de CEP
+  const encontrados = window.enderecos ? window.enderecos.filter(e => {
+    const ruaNormalizada = normalizar(e.rua);
+
+    const palavras = textoDigitado
+      .split(" ")
+      .filter(p => p.length > 2);
+
+    if (palavras.length === 0) return false;
+
+    return palavras.every(palavra =>
+      ruaNormalizada.includes(palavra)
+    );
+  }) : [];
+
+  if (encontrados.length === 0) {
+    resultado.innerHTML = "CEP não encontrado.";
+    return;
+  }
+
+  encontrados.forEach(e => {
+    resultado.innerHTML += `
+      <div class="card">
+        <strong>${e.rua}</strong><br>
+        CEP: <strong>${e.cep}</strong><br>
+        ${e.faixa ? `<small>${e.faixa}</small>` : ""}
+  
+        <div class="acoes">
+          <button class="btn-copiar"
+            onclick="copiarCEP('${e.rua.replace(/'/g, "\\'")}','${e.cep}','${e.faixa || ""}')">
+            Copiar CEP
+          </button>
+  
+          <button class="btn-maps"
+            onclick="abrirNoMaps('${e.rua.replace(/'/g, "\\'")}', '${e.cep}')">
+            Ver no Maps
+          </button>
+        </div>
+      </div>
+    `;
+  });
+}
+
+// ============================================
+// FUNÇÕES AUXILIARES
+// ============================================
+
+function copiarCEP(rua, cep, faixa) {
+  const texto =
+    `Rua: ${rua}
+CEP: ${cep}
+${faixa ? "Bairro: " + faixa : ""}`;
+
+  navigator.clipboard.writeText(texto)
+    .then(() => {
+      alert("CEP copiado com sucesso!");
+    })
+    .catch(() => {
+      alert("Não foi possível copiar o CEP.");
+    });
+}
+
+function abrirNoMaps(rua, cep) {
+  const query = encodeURIComponent(`${rua}, ${cep}, Itanhaém SP`);
+  const url = `https://www.google.com/maps/search/?api=1&query=${query}`;
+  window.open(url, "_blank");
+}
+
+async function lerKMZLocal(ev) {
+  const file = ev.target.files[0];
+  if (!file) return;
+
+  try {
+    const zip = await JSZip.loadAsync(file);
+    const kmlFile = zip.file(/\.kml$/i)[0];
+    
+    if (!kmlFile) {
+      alert("Nenhum arquivo KML encontrado no KMZ.");
+      return;
+    }
+    
+    const kml = await kmlFile.async("text");
+    const parser = new DOMParser();
+    const xml = parser.parseFromString(kml, "text/xml");
+
+    caixas = [];
+
+    xml.querySelectorAll("coordinates").forEach(p => {
+      const coords = p.textContent.trim();
+      coords.split(/\s+/).forEach(par => {
+        const partes = par.split(",");
+        if (partes.length < 2) return;
+
+        const lng = parseFloat(partes[0]);
+        const lat = parseFloat(partes[1]);
+
+        if (!isNaN(lat) && !isNaN(lng)) {
+          caixas.push({ lat, lng });
+        }
+      });
+    });
+
+    alert("KMZ carregado com sucesso! Caixas: " + caixas.length);
+    console.log("Caixas:", caixas);
+  } catch (error) {
+    console.error("Erro ao ler KMZ:", error);
+    alert("Erro ao processar arquivo KMZ.");
+  }
+}
+
+// ============================================
+// EVENT LISTENERS
+// ============================================
+
+document.addEventListener("DOMContentLoaded", function() {
+  // Configurar event listeners para os inputs de arquivo
+  const kmzInput = document.getElementById("kmzInput");
+  if (kmzInput) {
+    kmzInput.addEventListener("change", carregarArquivosKMZ);
+    kmzInput.addEventListener("change", lerKMZLocal);
+  }
+
+  // Configurar event listener para o botão de consulta de estrutura
+  const btnVerificarEstrutura = document.querySelector("button[onclick*='verificarEstruturaLocal']");
+  if (btnVerificarEstrutura) {
+    btnVerificarEstrutura.addEventListener("click", verificarEstruturaLocal);
+  }
+
+  // Configurar event listener para o input de endereço (tecla Enter)
+  const enderecoInput = document.getElementById("endereco");
+  if (enderecoInput) {
+    enderecoInput.addEventListener("keypress", function(e) {
+      if (e.key === "Enter") {
+        consultarCEP();
+      }
+    });
+  }
+
+  // Configurar event listener para o input de estrutura (tecla Enter)
+  const enderecoEstruturaInput = document.getElementById("enderecoEstrutura");
+  if (enderecoEstruturaInput) {
+    enderecoEstruturaInput.addEventListener("keypress", function(e) {
+      if (e.key === "Enter") {
+        verificarEstruturaLocal();
+      }
+    });
+  }
+
+  // Registrar Service Worker para PWA
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker
+        .register("service-worker.js")
+        .then(registration => {
+          console.log("Service Worker registrado com sucesso:", registration);
+        })
+        .catch(error => {
+          console.log("Falha ao registrar Service Worker:", error);
+        });
+    });
+  }
+});
+
+// ============================================
+// EXPORTAÇÕES PARA USO GLOBAL (se necessário)
+// ============================================
+
+// Torna as funções disponíveis globalmente para onclick em HTML
+window.carregarArquivosKMZ = carregarArquivosKMZ;
+window.verificarEstruturaLocal = verificarEstruturaLocal;
+window.consultarCEP = consultarCEP;
+window.copiarCEP = copiarCEP;
+window.abrirNoMaps = abrirNoMaps;
+window.lerKMZLocal = lerKMZLocal;
