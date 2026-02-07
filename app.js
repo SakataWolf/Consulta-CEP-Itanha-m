@@ -3559,6 +3559,13 @@ ${faixa ? "Bairro: " + faixa : ""}`;
     });
 }
 
+function abrirNoMaps(rua, cep) {
+  const query = encodeURIComponent(`${rua}, ${cep}, Itanhaém SP`);
+  const url = `https://www.google.com/maps/search/?api=1&query=${query}`;
+
+  window.open(url, "_blank");
+}
+
 function consultarCEP() {
   const inputEl = document.getElementById("endereco");
   const resultado = document.getElementById("resultado");
@@ -3628,3 +3635,4 @@ if ("serviceWorker" in navigator) {
       });
   });
 }
+
