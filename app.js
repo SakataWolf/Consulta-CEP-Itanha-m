@@ -3600,33 +3600,26 @@ function consultarCEP() {
 
   // Mostra todos os resultados
   encontrados.forEach(e => {
-    resultado.innerHTML += `
-      <div style="margin-top:10px">
-        <strong>${e.rua}</strong><br>
-        CEP: <strong>${e.cep}</strong><br>
-        ${e.faixa ? `<small>${e.faixa}</small>` : ""}<br>
+  resultado.innerHTML += `
+    <div class="card">
+      <strong>${e.rua}</strong><br>
+      CEP: <strong>${e.cep}</strong><br>
+      ${e.faixa ? `<small>${e.faixa}</small>` : ""}
 
-            <button
-                style="margin-top:6px"
-                onclick="copiarCEP(
-                  '${e.rua}',
-                  '${e.cep}',
-                  '${e.faixa || ""}'
-                )">
-                Copiar CEP  
-            </button>
+      <div class="acoes">
+        <button class="btn-copiar"
+          onclick="copiarCEP('${e.rua}','${e.cep}','${e.faixa || ""}')">
+          Copiar CEP
+        </button>
 
-            <button
-              style="margin-top:6px; margin-left:6px; background:#0F9D58; color:white; border:none; padding:6px 10px; border-radius:6px; cursor:pointer"
-              onclick="abrirNoMaps('${e.rua}', '${e.cep}')">
-              📍 Ver no Maps
-            </button>
-
-        <hr>
+        <button class="btn-maps"
+          onclick="abrirNoMaps('${e.rua}', '${e.cep}')">
+          Ver no Maps
+        </button>
       </div>
-    `;
-  });
-}
+    </div>
+  `;
+});
 
 // Registro do Service Worker (fora de tudo)
 if ("serviceWorker" in navigator) {
@@ -3641,5 +3634,6 @@ if ("serviceWorker" in navigator) {
       });
   });
 }
+
 
 
