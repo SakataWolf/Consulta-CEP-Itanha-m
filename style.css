@@ -211,3 +211,235 @@ hr {
   );
   margin: 26px 0;
 }
+
+/* ===============================
+   SEÇÕES
+=============================== */
+.secao-consulta, .secao-estrutura {
+  margin-bottom: 28px;
+}
+
+.secao-consulta h2, .secao-estrutura h2 {
+  margin-top: 0;
+  margin-bottom: 16px;
+  font-size: 18px;
+  color: #a48bff;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ===============================
+   INPUT GROUP
+=============================== */
+.input-group {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.input-group input {
+  margin-top: 0;
+  flex: 1;
+}
+
+/* ===============================
+   BOTÕES ESPECÍFICOS
+=============================== */
+.btn-consulta {
+  background: linear-gradient(135deg, #4a36cc, #6d4cff);
+  width: auto;
+  min-width: 120px;
+  padding: 12px 20px;
+}
+
+.btn-estrutura {
+  background: linear-gradient(135deg, #00c27a, #00a86b);
+  width: auto;
+  min-width: 150px;
+  padding: 12px 20px;
+}
+
+/* ===============================
+   FILE UPLOAD AREA
+=============================== */
+.file-upload-area {
+  background: #0c0a1a;
+  border: 2px dashed rgba(140, 110, 255, 0.35);
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 20px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.file-upload-area:hover {
+  border-color: #8c6cff;
+  background: rgba(140, 108, 255, 0.08);
+}
+
+.file-upload-icon {
+  font-size: 28px;
+  color: #8c6cff;
+}
+
+.file-upload-text {
+  text-align: left;
+  flex: 1;
+}
+
+.file-upload-text span {
+  display: block;
+  font-weight: 600;
+  color: #f1f1ff;
+  margin-bottom: 4px;
+}
+
+.file-upload-text small {
+  color: #8f8ab8;
+  font-size: 12px;
+}
+
+/* ===============================
+   SEPARADOR
+=============================== */
+.separador {
+  display: flex;
+  align-items: center;
+  margin: 30px 0;
+  gap: 15px;
+}
+
+.linha {
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    transparent,
+    rgba(140, 110, 255, 0.6),
+    transparent
+  );
+}
+
+.icone {
+  color: #8c6cff;
+  font-size: 20px;
+  background: #15102a;
+  padding: 5px;
+  border-radius: 50%;
+}
+
+/* ===============================
+   INFO CARD
+=============================== */
+.info-card {
+  background: linear-gradient(160deg, #141032, #0e0b1e);
+  border: 1px solid rgba(140, 110, 255, 0.25);
+  border-radius: 12px;
+  padding: 18px;
+  margin-top: 25px;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.05);
+}
+
+.info-card h3 {
+  margin-top: 0;
+  margin-bottom: 12px;
+  font-size: 16px;
+  color: #bfa9ff;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.info-content p {
+  margin: 8px 0;
+  font-size: 13px;
+  color: #b4b0d9;
+}
+
+.info-lista {
+  list-style: none;
+  padding: 0;
+  margin: 10px 0 0 0;
+}
+
+.info-lista li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: #b4b0d9;
+}
+
+/* ===============================
+   STATUS INDICADORES PEQUENOS
+=============================== */
+.status-indicador {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.verde-pequeno {
+  background: #9cffc2;
+  box-shadow: 0 0 8px rgba(156, 255, 194, 0.5);
+}
+
+.amarelo-pequeno {
+  background: #ffe6a1;
+  box-shadow: 0 0 8px rgba(255, 230, 161, 0.5);
+}
+
+.vermelho-pequeno {
+  background: #ff9c9c;
+  box-shadow: 0 0 8px rgba(255, 156, 156, 0.5);
+}
+
+/* ===============================
+   RESULTADO CONTAINER
+=============================== */
+.resultado-container {
+  min-height: 60px;
+  padding: 15px;
+  background: #0c0a1a;
+  border-radius: 10px;
+  border: 1px solid rgba(140, 110, 255, 0.2);
+  margin-top: 10px;
+}
+
+/* ===============================
+   RESPONSIVIDADE
+=============================== */
+@media (max-width: 500px) {
+  .container {
+    margin: 20px auto;
+    padding: 18px;
+  }
+  
+  .input-group {
+    flex-direction: column;
+  }
+  
+  .btn-consulta, .btn-estrutura {
+    width: 100%;
+  }
+  
+  .file-upload-area {
+    flex-direction: column;
+    text-align: center;
+    padding: 15px;
+  }
+  
+  .file-upload-icon {
+    font-size: 24px;
+  }
+  
+  .separador {
+    margin: 20px 0;
+  }
+}
