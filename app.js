@@ -3620,7 +3620,7 @@ function consultarCEP() {
     </div>
   `;
 });
-
+}
 // Registro do Service Worker (fora de tudo)
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
@@ -3634,6 +3634,7 @@ if ("serviceWorker" in navigator) {
       });
   });
 }
+
 
 
 
