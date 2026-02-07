@@ -3606,15 +3606,21 @@ function consultarCEP() {
         CEP: <strong>${e.cep}</strong><br>
         ${e.faixa ? `<small>${e.faixa}</small>` : ""}<br>
 
-        <button
-          style="margin-top:6px"
-          onclick="copiarCEP(
-            '${e.rua}',
-            '${e.cep}',
-            '${e.faixa || ""}'
-          )">
-          Copiar CEP
-        </button>
+            <button
+                style="margin-top:6px"
+                onclick="copiarCEP(
+                  '${e.rua}',
+                  '${e.cep}',
+                  '${e.faixa || ""}'
+                )">
+                Copiar CEP  
+            </button>
+
+            <button
+              style="margin-top:6px; margin-left:6px; background:#0F9D58; color:white; border:none; padding:6px 10px; border-radius:6px; cursor:pointer"
+              onclick="abrirNoMaps('${e.rua}', '${e.cep}')">
+              📍 Ver no Maps
+            </button>
 
         <hr>
       </div>
@@ -3635,4 +3641,5 @@ if ("serviceWorker" in navigator) {
       });
   });
 }
+
 
