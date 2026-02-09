@@ -92,16 +92,6 @@ Bairro: Savoy
 
 ---
 
-## 🔜 Próximos upgrades planejados
-
-* 🔄 Importação automática do PDF oficial dos Correios
-* ✨ Autocomplete de ruas
-* 🧠 Agrupamento inteligente por rua
-* 📊 Ordenação por faixa numérica
-* 🎨 Feedback visual ao copiar CEP (toast)
-
----
-
 ## 🤝 Contribuições
 
 Sugestões, melhorias e feedbacks são muito bem-vindos!
