@@ -4087,3 +4087,1115 @@ window.consultarCEP = consultarCEP;
 window.copiarCEP = copiarCEP;
 window.abrirNoMaps = abrirNoMaps;
 window.lerKMZLocal = lerKMZLocal;
+
+// ============================================
+// FUNÇÕES DE GEOCODIFICAÇÃO AVANÇADA
+// ============================================
+
+/**
+ * Tenta geocodificar um endereço usando múltiplas estratégias:
+ * 1. Endereço completo (rua + número)
+ * 2. Apenas o nome da rua
+ * 3. Fallback para seleção manual no Maps
+ */
+async function geocodificarEndereco(endereco) {
+  const resultados = [];
+  
+  // Estratégia 1: Endereço completo
+  try {
+    const coords = await geocodificarNominatim(endereco);
+    if (coords) {
+      resultados.push({
+        ...coords,
+        metodo: 'completo',
+        displayName: endereco
+      });
+    }
+  } catch (e) {
+    console.log('Geocodificação completa falhou:', e.message);
+  }
+  
+  // Estratégia 2: Apenas o nome da rua (remover números)
+  const apenasRua = endereco.replace(/\b\d+\s*[-–]?\s*\d*[a-z]?\b/gi, '').trim();
+  
+  if (apenasRua && apenasRua !== endereco) {
+    try {
+      const coords = await geocodificarNominatim(apenasRua);
+      if (coords) {
+        resultados.push({
+          ...coords,
+          metodo: 'rua_apenas',
+          displayName: apenasRua
+        });
+      }
+    } catch (e) {
+      console.log('Geocodificação apenas da rua falhou:', e.message);
+    }
+  }
+  
+  return resultados;
+}
+
+/**
+ * Geocodificação usando Nominatim (OpenStreetMap)
+ */
+async function geocodificarNominatim(query) {
+  const url = "https://nominatim.openstreetmap.org/search?" + 
+    new URLSearchParams({
+      format: "jsonv2",
+      q: `${query}, Itanhaém, SP, Brazil`,
+      addressdetails: 1,
+      limit: 1,
+      countrycodes: 'br'
+    });
+
+  const response = await fetchComTimeout(url, {
+    headers: {
+      "Accept": "application/json",
+      "User-Agent": "ConsultaCEP-Itanhaem/1.0 (contato@local)"
+    }
+  }, 6000);
+
+  if (!response.ok) return null;
+  
+  const dados = await response.json();
+  
+  if (!dados || dados.length === 0) return null;
+  
+  return {
+    lat: parseFloat(dados[0].lat),
+    lng: parseFloat(dados[0].lon),
+    displayName: dados[0].display_name
+  };
+}
+
+// ============================================
+// SELEÇÃO MANUAL DE COORDENADAS
+// ============================================
+
+/**
+ * Abre o Google Maps para o usuário selecionar um ponto manualmente
+ */
+function abrirSeletorCoordenadas(enderecoOriginal = '') {
+  const query = encodeURIComponent(enderecoOriginal || 'Itanhaém SP');
+  const url = `https://www.google.com/maps/search/?api=1&query=${query}`;
+  
+  // Abre uma nova janela com instruções
+  const mapsWindow = window.open(url, '_blank');
+  
+  // Mostra instruções para o usuário
+  alert(`📍 Selecione o ponto no mapa e clique com botão direito\n\n` +
+        `👉 Escolha "O que há aqui?"\n` +
+        `📋 As coordenadas aparecerão na parte inferior\n` +
+        `🔍 Use o campo "Coordenadas" abaixo para inserir`);
+  
+  // Cria um campo de entrada para coordenadas se não existir
+  criarCampoCoordenadasManual(enderecoOriginal);
+}
+
+/**
+ * Cria um campo para entrada manual de coordenadas
+ */
+function criarCampoCoordenadasManual(enderecoOriginal) {
+  // Verifica se já existe
+  if (document.getElementById('coordenadasManualContainer')) {
+    document.getElementById('coordenadasManualContainer').style.display = 'block';
+    return;
+  }
+  
+  const container = document.querySelector('.secao-estrutura');
+  if (!container) return;
+  
+  const div = document.createElement('div');
+  div.id = 'coordenadasManualContainer';
+  div.className = 'coordenadas-manual';
+  div.innerHTML = `
+    <div style="margin: 20px 0; padding: 15px; background: rgba(140, 108, 255, 0.1); border-radius: 8px; border: 1px solid rgba(140, 108, 255, 0.3);">
+      <h4 style="margin: 0 0 12px 0; color: #bfa9ff; display: flex; align-items: center; gap: 8px;">
+        <span>📌</span> Coordenadas Manuais
+      </h4>
+      <p style="margin: 0 0 10px 0; font-size: 0.85rem; color: #b4b0d9;">
+        ${enderecoOriginal ? `Endereço: <strong>${enderecoOriginal}</strong><br>` : ''}
+        Cole as coordenadas do Google Maps (ex: -24.123456, -46.123456)
+      </p>
+      <div style="display: flex; gap: 10px;">
+        <input 
+          type="text" 
+          id="coordenadasInput" 
+          placeholder="-24.123456, -46.123456"
+          style="flex: 1; margin: 0;"
+        >
+        <button 
+          onclick="processarCoordenadasManuais()" 
+          style="width: auto; margin: 0;"
+          class="btn-estrutura"
+        >
+          Verificar
+        </button>
+      </div>
+      <button 
+        onclick="document.getElementById('coordenadasManualContainer').style.display='none'"
+        style="background: transparent; border: 1px solid rgba(140,108,255,0.3); margin-top: 10px; color: #b4b0d9;"
+      >
+        Fechar
+      </button>
+    </div>
+  `;
+  
+  container.appendChild(div);
+}
+
+/**
+ * Processa coordenadas inseridas manualmente
+ */
+function processarCoordenadasManuais() {
+  const input = document.getElementById('coordenadasInput');
+  if (!input || !input.value.trim()) {
+    alert('Por favor, insira as coordenadas');
+    return;
+  }
+  
+  let coordenadas = input.value.trim();
+  
+  // Tenta extrair coordenadas de vários formatos
+  // -24.123456, -46.123456
+  // -24.123456 -46.123456
+  // -24.123456, -46.123456, alguma coisa
+  const matches = coordenadas.match(/-?\d+\.?\d*,\s*-?\d+\.?\d*|-?\d+\.?\d*\s+-?\d+\.?\d*/);
+  
+  if (!matches) {
+    alert('Formato inválido. Use: -24.123456, -46.123456');
+    return;
+  }
+  
+  const partes = matches[0].split(/[,\s]+/).filter(p => p.trim() !== '');
+  
+  if (partes.length < 2) {
+    alert('Formato inválido. Use: -24.123456, -46.123456');
+    return;
+  }
+  
+  const lat = parseFloat(partes[0]);
+  const lng = parseFloat(partes[1]);
+  
+  if (isNaN(lat) || isNaN(lng)) {
+    alert('Coordenadas inválidas');
+    return;
+  }
+  
+  // Verifica se estão dentro da área esperada (Itanhaém)
+  if (lat < -24.3 || lat > -24.0 || lng < -46.9 || lng > -46.7) {
+    const confirmar = confirm(
+      '⚠️ As coordenadas estão fora da área esperada para Itanhaém.\n\n' +
+      `Latitude: ${lat}\nLongitude: ${lng}\n\n` +
+      'Deseja continuar mesmo assim?'
+    );
+    if (!confirmar) return;
+  }
+  
+  verificarEstruturaPorCoordenadas(lat, lng, 'manual');
+}
+
+// ============================================
+// VERIFICAÇÃO DE ESTRUTURA POR COORDENADAS
+// ============================================
+
+/**
+ * Versão principal da verificação de estrutura - TENTA MÚLTIPLOS MÉTODOS
+ */
+async function verificarEstruturaLocal() {
+  const box = document.getElementById("resultadoEstrutura");
+  const enderecoInput = document.getElementById("enderecoEstrutura");
+  const endereco = enderecoInput.value.trim();
+
+  if (!postes || postes.length === 0) {
+    box.innerHTML = `
+      <div style="background: rgba(255, 156, 156, 0.1); border: 1px solid rgba(255, 156, 156, 0.3); border-radius: 8px; padding: 15px;">
+        <span style="color: #ff9c9c;">⚠ Selecione primeiro o arquivo KMZ com os postes.</span>
+        <button onclick="document.getElementById('kmzInput').click()" 
+                style="margin-top: 10px; background: #4a36cc; padding: 10px;">
+          📁 Selecionar arquivo
+        </button>
+      </div>
+    `;
+    return;
+  }
+
+  if (endereco.length < 4) {
+    box.innerHTML = `
+      <div style="background: rgba(255, 200, 90, 0.1); border: 1px solid rgba(255, 200, 90, 0.3); border-radius: 8px; padding: 15px;">
+        <span style="color: #ffe6a1;">Digite o endereço completo ou parte dele</span>
+      </div>
+    `;
+    return;
+  }
+
+  box.innerHTML = `
+    <div style="display: flex; align-items: center; gap: 12px;">
+      <div style="width: 20px; height: 20px; border: 3px solid rgba(140, 108, 255, 0.3); border-top-color: #8c6cff; border-radius: 50%; animation: spin 1s linear infinite;"></div>
+      <span>🔍 Consultando endereço...</span>
+    </div>
+  `;
+
+  try {
+    // TENTATIVA 1: Geocodificar o endereço
+    const resultados = await geocodificarEndereco(endereco);
+    
+    if (resultados.length > 0) {
+      // Usa o primeiro resultado (prioridade: endereço completo > apenas rua)
+      const melhorResultado = resultados[0];
+      
+      const metodoTexto = melhorResultado.metodo === 'completo' 
+        ? '📍 Localizado pelo número' 
+        : '🏠 Localizado pelo nome da rua (número não encontrado)';
+      
+      await verificarEstruturaPorCoordenadas(
+        melhorResultado.lat, 
+        melhorResultado.lng, 
+        'geocode',
+        metodoTexto,
+        melhorResultado.displayName
+      );
+      return;
+    }
+    
+    // TENTATIVA 2: Não encontrou coordenadas - oferece seleção manual
+    box.innerHTML = `
+      <div style="background: rgba(255, 200, 90, 0.15); border: 1px solid rgba(255, 200, 90, 0.4); border-radius: 12px; padding: 20px;">
+        <div style="font-size: 24px; margin-bottom: 10px;">📍❓</div>
+        <h3 style="margin: 0 0 10px 0; color: #ffe6a1;">Endereço não localizado automaticamente</h3>
+        <p style="margin-bottom: 20px; color: #b4b0d9; font-size: 0.9rem;">
+          Não foi possível encontrar coordenadas para: <strong>${endereco}</strong>
+        </p>
+        <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+          <button onclick="abrirSeletorCoordenadas('${endereco}')" 
+                  style="flex: 1; background: #8c6cff; margin: 0;">
+            🗺️ Selecionar no Maps
+          </button>
+          <button onclick="criarCampoCoordenadasManual('${endereco}')" 
+                  style="flex: 1; background: #4a36cc; margin: 0;">
+            📋 Inserir coordenadas
+          </button>
+        </div>
+        <button onclick="verificarEstruturaLocalSemNumero('${endereco.replace(/'/g, "\\'")}')" 
+                style="width: 100%; margin-top: 12px; background: transparent; border: 1px solid rgba(140,108,255,0.4);">
+          🔄 Tentar apenas o nome da rua
+        </button>
+      </div>
+    `;
+    
+  } catch (error) {
+    console.error("Erro na verificação:", error);
+    box.innerHTML = `
+      <div style="background: rgba(255, 156, 156, 0.1); border: 1px solid rgba(255, 156, 156, 0.3); border-radius: 8px; padding: 15px;">
+        <span style="color: #ff9c9c;">❌ Erro na consulta: ${error.message || 'Falha na comunicação'}</span>
+        <button onclick="abrirSeletorCoordenadas('${endereco}')" 
+                style="margin-top: 12px; width: 100%;">
+          🗺️ Selecionar localização manualmente
+        </button>
+      </div>
+    `;
+  }
+}
+
+/**
+ * Tenta verificar estrutura apenas com o nome da rua (sem número)
+ */
+async function verificarEstruturaLocalSemNumero(enderecoOriginal) {
+  const box = document.getElementById("resultadoEstrutura");
+  
+  // Remove números do endereço
+  const apenasRua = enderecoOriginal.replace(/\b\d+\s*[-–]?\s*\d*[a-z]?\b/gi, '').trim();
+  
+  box.innerHTML = `<span>🔍 Tentando localizar: ${apenasRua}...</span>`;
+  
+  try {
+    const coords = await geocodificarNominatim(apenasRua);
+    
+    if (coords) {
+      await verificarEstruturaPorCoordenadas(
+        coords.lat, 
+        coords.lng, 
+        'rua_apenas',
+        '⚠️ Número não localizado, verificado pelo nome da rua',
+        apenasRua
+      );
+    } else {
+      // Se ainda falhar, oferece seleção manual
+      box.innerHTML = `
+        <div style="background: rgba(255, 200, 90, 0.15); border: 1px solid rgba(255, 200, 90, 0.4); border-radius: 12px; padding: 20px;">
+          <p style="margin-bottom: 15px; color: #ffe6a1;">
+            Não foi possível localizar a rua: <strong>${apenasRua}</strong>
+          </p>
+          <button onclick="abrirSeletorCoordenadas('${apenasRua}')" style="width: 100%;">
+            🗺️ Selecionar no Maps
+          </button>
+        </div>
+      `;
+    }
+  } catch (e) {
+    console.error(e);
+    box.innerHTML = `
+      <div style="background: rgba(255, 156, 156, 0.1); border: 1px solid rgba(255, 156, 156, 0.3); border-radius: 8px; padding: 15px;">
+        <span style="color: #ff9c9c;">❌ Erro ao consultar rua</span>
+        <button onclick="abrirSeletorCoordenadas('${apenasRua}')" style="margin-top: 12px; width: 100%;">
+          🗺️ Selecionar no Maps
+        </button>
+      </div>
+    `;
+  }
+}
+
+/**
+ * Função principal que verifica estrutura a partir de coordenadas
+ */
+async function verificarEstruturaPorCoordenadas(lat, lng, fonte, mensagemAdicional = '', displayName = '') {
+  const box = document.getElementById("resultadoEstrutura");
+  
+  const { distancia, poste } = posteMaisProximo(lat, lng);
+  
+  let classe, texto, icone;
+  
+  if (distancia <= 200) {
+    classe = "verde";
+    texto = "🟢 TEM ESTRUTURA";
+    icone = "✅";
+  } else if (distancia <= 400) {
+    classe = "amarelo";
+    texto = "🟡 NECESSÁRIO ANÁLISE";
+    icone = "⚠️";
+  } else {
+    classe = "vermelho";
+    texto = "🔴 SEM ESTRUTURA";
+    icone = "❌";
+  }
+  
+  // Informações de geocodificação
+  let infoGeocode = '';
+  if (fonte === 'geocode' || fonte === 'rua_apenas') {
+    infoGeocode = `
+      <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.1);">
+        <small style="color: #8f8ab8; display: block; margin-bottom: 4px;">
+          ${mensagemAdicional || 'Localização aproximada'}
+        </small>
+        ${displayName ? `<small style="color: #b4b0d9; font-size: 0.75rem;">${displayName}</small>` : ''}
+      </div>
+    `;
+  }
+  
+  // Informações de coordenadas manuais
+  let infoManual = '';
+  if (fonte === 'manual') {
+    infoManual = `
+      <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.1);">
+        <small style="color: #8f8ab8;">📍 Coordenadas inseridas manualmente</small>
+        <div style="display: flex; gap: 8px; margin-top: 8px;">
+          <small style="color: #b4b0d9; background: rgba(0,0,0,0.3); padding: 4px 8px; border-radius: 4px;">
+            Lat: ${lat.toFixed(6)}
+          </small>
+          <small style="color: #b4b0d9; background: rgba(0,0,0,0.3); padding: 4px 8px; border-radius: 4px;">
+            Lng: ${lng.toFixed(6)}
+          </small>
+        </div>
+      </div>
+    `;
+  }
+  
+  box.innerHTML = `
+    <div class="status ${classe}" style="margin-bottom: 15px;">
+      <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+        <span style="font-size: 24px;">${icone}</span>
+        <span style="font-size: 18px; font-weight: bold;">${texto}</span>
+      </div>
+      
+      <div style="background: rgba(0,0,0,0.2); border-radius: 8px; padding: 12px; margin: 10px 0;">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+          <span>📍 Poste mais próximo:</span>
+          <strong>${poste?.nome || "Desconhecido"}</strong>
+        </div>
+        <div style="display: flex; justify-content: space-between;">
+          <span>📏 Distância:</span>
+          <strong style="font-size: 1.2rem;">${distancia.toFixed(1)} metros</strong>
+        </div>
+      </div>
+      
+      ${infoGeocode}
+      ${infoManual}
+      
+      <div style="display: flex; gap: 10px; margin-top: 15px;">
+        <button onclick="window.open('https://www.google.com/maps?q=${lat},${lng}', '_blank')" 
+                style="flex: 1; margin: 0; background: #4a36cc;">
+          🗺️ Ver no Maps
+        </button>
+        <button onclick="copiarCoordenadas(${lat}, ${lng})" 
+                style="flex: 1; margin: 0; background: #5a2cff;">
+          📋 Copiar coordenadas
+        </button>
+      </div>
+    </div>
+  `;
+  
+  // Esconde o campo de coordenadas manuais se estiver visível
+  const manualContainer = document.getElementById('coordenadasManualContainer');
+  if (manualContainer) {
+    manualContainer.style.display = 'none';
+  }
+}
+
+/**
+ * Copia coordenadas para a área de transferência
+ */
+function copiarCoordenadas(lat, lng) {
+  const texto = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+  navigator.clipboard.writeText(texto)
+    .then(() => alert('✅ Coordenadas copiadas!'))
+    .catch(() => alert('❌ Erro ao copiar coordenadas'));
+}
+
+// ============================================
+// MELHORIAS NA INTERFACE
+// ============================================
+
+/**
+ * Adiciona indicador de carregamento melhorado
+ */
+function adicionarEstilosAdicionais() {
+  const style = document.createElement('style');
+  style.textContent = `
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    
+    .coordenadas-manual {
+      animation: slideDown 0.3s ease;
+    }
+    
+    @keyframes slideDown {
+      from {
+        opacity: 0;
+        transform: translateY(-10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    
+    .status {
+      transition: all 0.3s ease;
+    }
+    
+    .btn-tentativa {
+      background: rgba(140, 108, 255, 0.1);
+      border: 1px dashed rgba(140, 108, 255, 0.5);
+      color: #b4b0d9;
+      padding: 10px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+      width: 100%;
+      margin-top: 10px;
+    }
+    
+    .btn-tentativa:hover {
+      background: rgba(140, 108, 255, 0.2);
+      border-color: #8c6cff;
+      color: white;
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+// Inicializa estilos adicionais
+adicionarEstilosAdicionais();
+
+// ============================================
+// EXPORTA FUNÇÕES PARA USO GLOBAL
+// ============================================
+
+window.verificarEstruturaLocal = verificarEstruturaLocal;
+window.verificarEstruturaLocalSemNumero = verificarEstruturaLocalSemNumero;
+window.abrirSeletorCoordenadas = abrirSeletorCoordenadas;
+window.criarCampoCoordenadasManual = criarCampoCoordenadasManual;
+window.processarCoordenadasManuais = processarCoordenadasManuais;
+window.copiarCoordenadas = copiarCoordenadas;
+
+// ============================================
+// CONSULTA DE CEP COM TOLERÂNCIA A ERROS
+// ============================================
+
+/**
+ * Lista de palavras que indicam tipo de logradouro
+ * Serão IGNORADAS completamente na busca
+ */
+const PALAVRAS_IGNORAR = [
+  'rua', 'r', 'av', 'avenida', 'av.', 'al', 'alameda', 
+  'tv', 'travessa', 'praca', 'praça', 'pc', 'pç', 'largo',
+  'estrada', 'est', 'rodovia', 'sp', 'br', 'viela', 'vla',
+  'jardim', 'jd', 'parque', 'pq', 'balneario', 'baln',
+  'condominio', 'cond', 'residencial', 'rec', 'loteamento', 'lot',
+  'chacara', 'chac', 'chácara', 'sitio', 'colonia',
+  'vila', 'vl', 'cdade', 'cidade', 'cid', 'centro'
+];
+
+/**
+ * Calcula similaridade entre strings (algoritmo de Levenshtein simples)
+ * Quanto menor o número, mais similares são as strings
+ */
+function calcularDistanciaEdicao(a, b) {
+  if (a.length === 0) return b.length;
+  if (b.length === 0) return a.length;
+  
+  const matrix = [];
+  
+  for (let i = 0; i <= b.length; i++) {
+    matrix[i] = [i];
+  }
+  
+  for (let j = 0; j <= a.length; j++) {
+    matrix[0][j] = j;
+  }
+  
+  for (let i = 1; i <= b.length; i++) {
+    for (let j = 1; j <= a.length; j++) {
+      if (b.charAt(i - 1) === a.charAt(j - 1)) {
+        matrix[i][j] = matrix[i - 1][j - 1];
+      } else {
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j - 1] + 1,
+          matrix[i][j - 1] + 1,
+          matrix[i - 1][j] + 1
+        );
+      }
+    }
+  }
+  
+  return matrix[b.length][a.length];
+}
+
+/**
+ * Calcula um score de similaridade (0-1) entre duas strings
+ * 1 = idênticas, 0 = completamente diferentes
+ */
+function calcularSimilaridade(a, b) {
+  if (!a || !b) return 0;
+  
+  a = a.toLowerCase();
+  b = b.toLowerCase();
+  
+  // Se uma string contém a outra completamente
+  if (a.includes(b) || b.includes(a)) {
+    const maxLen = Math.max(a.length, b.length);
+    const minLen = Math.min(a.length, b.length);
+    return minLen / maxLen * 0.8 + 0.2; // Score alto
+  }
+  
+  const distancia = calcularDistanciaEdicao(a, b);
+  const maxLen = Math.max(a.length, b.length);
+  
+  // Normaliza para 0-1
+  return 1 - (distancia / maxLen);
+}
+
+/**
+ * Extrai o nome principal da rua ignorando prefixos
+ * Ex: "Rua José Marques" -> "josé marques"
+ *     "Av. Rui Barbosa" -> "rui barbosa"
+ *     "Avenida Harry Forssell" -> "harry forssell"
+ */
+function extrairNomePrincipal(rua) {
+  if (!rua) return '';
+  
+  let nome = rua.toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+  
+  // Remove tudo que estiver entre parênteses
+  nome = nome.replace(/\([^)]*\)/g, '');
+  
+  // Divide em palavras
+  const palavras = nome.split(' ').filter(p => p.length > 1);
+  
+  // Se não houver palavras, retorna string vazia
+  if (palavras.length === 0) return '';
+  
+  // Verifica se a primeira palavra deve ser ignorada
+  if (PALAVRAS_IGNORAR.includes(palavras[0])) {
+    return palavras.slice(1).join(' ');
+  }
+  
+  return palavras.join(' ');
+}
+
+/**
+ * Função de normalização APRIMORADA para busca
+ */
+function normalizarParaBusca(texto = "") {
+  if (!texto) return "";
+  
+  return texto
+    .toString()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "") // Remove acentos
+    .replace(/[.,;:()\-_]/g, ' ') // Substitui pontuação por espaço
+    .replace(/[^a-z0-9 ]/g, "") // Remove caracteres especiais
+    .replace(/\s+/g, ' ') // Remove espaços múltiplos
+    .trim();
+}
+
+/**
+ * Calcula pontuação de relevância para um resultado
+ */
+function calcularRelevancia(rua, termoBusca, termoNormalizado, nomePrincipal) {
+  let score = 0;
+  
+  const ruaLower = rua.toLowerCase();
+  const termoLower = termoBusca.toLowerCase();
+  const nomePrincipalLower = nomePrincipal.toLowerCase();
+  
+  // CRITÉRIO 1: Correspondência exata (maior pontuação)
+  if (ruaLower === termoLower) {
+    score += 100;
+  }
+  
+  // CRITÉRIO 2: Rua começa com o termo de busca
+  if (ruaLower.startsWith(termoLower)) {
+    score += 80;
+  }
+  
+  // CRITÉRIO 3: Nome principal começa com o termo
+  if (nomePrincipalLower.startsWith(termoLower)) {
+    score += 75;
+  }
+  
+  // CRITÉRIO 4: Contém o termo exato
+  if (ruaLower.includes(termoLower)) {
+    score += 60;
+  }
+  
+  // CRITÉRIO 5: Nome principal contém o termo
+  if (nomePrincipalLower.includes(termoLower)) {
+    score += 50;
+  }
+  
+  // CRITÉRIO 6: Similaridade fuzzy com o nome completo
+  const similaridadeRua = calcularSimilaridade(ruaLower, termoLower);
+  if (similaridadeRua > 0.6) {
+    score += similaridadeRua * 40;
+  }
+  
+  // CRITÉRIO 7: Similaridade fuzzy com o nome principal
+  const similaridadePrincipal = calcularSimilaridade(nomePrincipalLower, termoLower);
+  if (similaridadePrincipal > 0.6) {
+    score += similaridadePrincipal * 30;
+  }
+  
+  // CRITÉRIO 8: Bônus para ruas mais conhecidas (com base em ocorrências)
+  if (ruaLower.includes('anchieta') || ruaLower.includes('harry forssell')) {
+    score += 10;
+  }
+  
+  // CRITÉRIO 9: Penalidade para termos muito curtos
+  if (termoLower.length < 4) {
+    score *= 0.7;
+  }
+  
+  return Math.round(score);
+}
+
+/**
+ * CONSULTA PRINCIPAL DE CEP - VERSÃO APRIMORADA
+ */
+function consultarCEP() {
+  const inputEl = document.getElementById("endereco");
+  const resultado = document.getElementById("resultado");
+  const sugestoesContainer = document.getElementById("sugestoesContainer");
+  
+  // Esconde sugestões ao buscar
+  if (sugestoesContainer) {
+    sugestoesContainer.style.display = 'none';
+  }
+
+  const textoDigitado = inputEl.value.trim();
+  const textoNormalizado = normalizarParaBusca(textoDigitado);
+  
+  resultado.innerHTML = "";
+
+  // Proteção para busca muito curta
+  if (textoNormalizado.replace(/\s/g, "").length < 2) {
+    resultado.innerHTML = `
+      <div class="dicas" style="margin-top: 0;">
+        <small>🔍 Digite ao menos 2 letras para buscar...</small>
+      </div>
+    `;
+    return;
+  }
+
+  // Verifica se os dados estão carregados
+  if (!window.enderecos || !Array.isArray(window.enderecos)) {
+    resultado.innerHTML = `
+      <div style="color: #ff9c9c; padding: 15px; background: rgba(255,156,156,0.1); border-radius: 8px;">
+        ⚠️ Dados de CEP não carregados. Atualize a página.
+      </div>
+    `;
+    return;
+  }
+
+  // Processa o termo de busca
+  const palavrasBusca = textoNormalizado
+    .split(" ")
+    .filter(p => p.length > 1);
+  
+  // PREPARA TODOS OS ENDEREÇOS COM NOMES PRINCIPAIS
+  const enderecosProcessados = window.enderecos.map(e => {
+    return {
+      ...e,
+      nomePrincipal: extrairNomePrincipal(e.rua),
+      nomeNormalizado: normalizarParaBusca(e.rua),
+      nomePrincipalNormalizado: normalizarParaBusca(extrairNomePrincipal(e.rua))
+    };
+  });
+
+  // FILTRO INICIAL RÁPIDO (para performance)
+  let candidatos = enderecosProcessados.filter(e => {
+    // Busca no nome completo
+    if (e.nomeNormalizado.includes(textoNormalizado)) {
+      return true;
+    }
+    
+    // Busca no nome principal (sem prefixos)
+    if (e.nomePrincipalNormalizado.includes(textoNormalizado)) {
+      return true;
+    }
+    
+    // Busca por palavras individuais
+    if (palavrasBusca.length > 0) {
+      const palavrasEncontradas = palavrasBusca.filter(palavra => 
+        e.nomeNormalizado.includes(palavra) || 
+        e.nomePrincipalNormalizado.includes(palavra)
+      );
+      
+      // Se encontrou pelo menos metade das palavras
+      return palavrasEncontradas.length >= Math.ceil(palavrasBusca.length / 2);
+    }
+    
+    return false;
+  });
+
+  // Se não encontrou nada, tenta busca mais flexível
+  if (candidatos.length === 0) {
+    candidatos = enderecosProcessados.filter(e => {
+      const termosBusca = textoNormalizado.split(' ');
+      
+      for (const termo of termosBusca) {
+        if (termo.length < 3) continue;
+        
+        // Tenta correspondência aproximada
+        if (e.nomePrincipalNormalizado.includes(termo) || 
+            e.nomeNormalizado.includes(termo)) {
+          return true;
+        }
+        
+        // Similaridade fuzzy
+        const similaridade = calcularSimilaridade(e.nomePrincipalNormalizado, termo);
+        if (similaridade > 0.7) {
+          return true;
+        }
+      }
+      return false;
+    });
+  }
+
+  // CALCULA RELEVÂNCIA PARA CADA RESULTADO
+  const encontradosComScore = candidatos.map(e => {
+    const score = calcularRelevancia(
+      e.rua, 
+      textoDigitado,
+      textoNormalizado,
+      e.nomePrincipal
+    );
+    
+    return { ...e, score };
+  });
+
+  // ORDENA POR RELEVÂNCIA
+  const encontrados = encontradosComScore
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 15); // Limita a 15 resultados para não poluir
+
+  if (encontrados.length === 0) {
+    resultado.innerHTML = `
+      <div style="text-align: center; padding: 25px; background: rgba(140, 108, 255, 0.05); border-radius: 12px;">
+        <span style="font-size: 32px; display: block; margin-bottom: 10px;">🔍❌</span>
+        <strong style="color: #bfa9ff; font-size: 1.1rem;">CEP não encontrado</strong>
+        <p style="color: #8f8ab8; margin-top: 10px; font-size: 0.85rem;">
+          Busca: "${textoDigitado}"<br>
+          Tente palavras-chave ou abreviações
+        </p>
+        <div style="display: flex; gap: 10px; margin-top: 15px;">
+          <button onclick="document.getElementById('endereco').value = ''; document.getElementById('endereco').focus()" 
+                  style="background: transparent; border: 1px solid rgba(140,108,255,0.4); margin: 0;">
+            🔄 Nova busca
+          </button>
+          <button onclick="abrirNoMaps('${textoDigitado}', 'Itanhaém')" 
+                  style="margin: 0;">
+            🗺️ Buscar no Maps
+          </button>
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  // Mostra quantidade de resultados
+  resultado.innerHTML = `
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding: 0 5px;">
+      <span style="color: #8f8ab8; font-size: 0.8rem;">
+        📍 ${encontrados.length} ${encontrados.length === 1 ? 'resultado' : 'resultados'} encontrado${encontrados.length === 1 ? '' : 's'}
+      </span>
+      <span style="color: #8c6cff; font-size: 0.75rem; background: rgba(140,108,255,0.1); padding: 4px 10px; border-radius: 20px;">
+        Busca inteligente ativa
+      </span>
+    </div>
+  `;
+
+  // Mostra os resultados
+  encontrados.forEach((e, index) => {
+    // Destaque especial para alta relevância
+    const isHighRelevance = e.score > 80;
+    const highlightClass = isHighRelevance ? 'high-relevance' : '';
+    
+    // Verifica se o usuário digitou o prefixo
+    const digitouPrefixos = PALAVRAS_IGNORAR.some(p => 
+      textoDigitado.toLowerCase().startsWith(p)
+    );
+    
+    let badgeInfo = '';
+    if (digitouPrefixos && e.nomePrincipal !== normalizarParaBusca(e.rua)) {
+      badgeInfo = `
+        <span style="background: rgba(255,200,90,0.15); color: #ffe6a1; font-size: 0.65rem; padding: 3px 8px; border-radius: 20px; margin-left: 8px;">
+          Busca ignorou "prefixo"
+        </span>
+      `;
+    }
+    
+    resultado.innerHTML += `
+      <div class="card ${highlightClass}" style="animation: fadeIn 0.3s ease; animation-delay: ${index * 0.05}s;">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+          <span style="color: ${e.score > 80 ? '#8c6cff' : '#b4b0d9'}; font-weight: bold;">${e.rua}</span>
+          ${badgeInfo}
+        </div>
+        
+        <div style="background: rgba(140,108,255,0.08); padding: 8px; border-radius: 6px; margin: 8px 0;">
+          <span style="font-size: 1.1rem; font-weight: bold; color: #bfa9ff;">${e.cep}</span>
+          ${e.faixa ? `<span style="color: #8f8ab8; margin-left: 10px;">• ${e.faixa}</span>` : ""}
+        </div>
+  
+        <div class="acoes">
+          <button class="btn-copiar"
+            onclick="copiarCEP('${e.rua.replace(/'/g, "\\'")}','${e.cep}','${e.faixa || ""}')">
+            📋 Copiar CEP
+          </button>
+  
+          <button class="btn-maps"
+            onclick="abrirNoMaps('${e.rua.replace(/'/g, "\\'")}', '${e.cep}')">
+            🗺️ Maps
+          </button>
+        </div>
+        
+        ${e.score < 50 ? `
+          <div style="margin-top: 10px; padding-top: 8px; border-top: 1px dashed rgba(140,108,255,0.3);">
+            <small style="color: #8f8ab8;">🔍 Você quis dizer: <span style="color: #ffe6a1;">${e.nomePrincipal}</span>?</small>
+          </div>
+        ` : ''}
+      </div>
+    `;
+  });
+  
+  // Adiciona dica se houver muitos resultados
+  if (encontrados.length > 8) {
+    resultado.innerHTML += `
+      <div class="dicas" style="margin-top: 15px;">
+        <small>💡 Muitos resultados encontrados. Adicione mais palavras para refinar a busca.</small>
+      </div>
+    `;
+  }
+}
+
+// ============================================
+// AUTO-COMPLETE APRIMORADO
+// ============================================
+
+/**
+ * Versão melhorada do auto-complete
+ */
+function inicializarAutoComplete() {
+  const enderecoInput = document.getElementById('endereco');
+  const sugestoesContainer = document.getElementById('sugestoesContainer');
+  const sugestoesLista = document.getElementById('sugestoesLista');
+  
+  if (!enderecoInput) return;
+  
+  let timeoutBusca;
+  let ultimaBusca = '';
+  
+  enderecoInput.addEventListener('input', function() {
+    clearTimeout(timeoutBusca);
+    
+    const termo = this.value.trim();
+    
+    if (termo.length < 2) {
+      sugestoesContainer.style.display = 'none';
+      return;
+    }
+    
+    // Evita buscar o mesmo termo repetidamente
+    if (termo === ultimaBusca) return;
+    ultimaBusca = termo;
+    
+    timeoutBusca = setTimeout(() => {
+      if (!window.enderecos || !Array.isArray(window.enderecos)) return;
+      
+      const termoNormalizado = normalizarParaBusca(termo);
+      const nomePrincipalBusca = extrairNomePrincipal(termo);
+      const nomePrincipalNormalizado = normalizarParaBusca(nomePrincipalBusca);
+      
+      // Processa endereços para sugestões
+      const sugestoes = window.enderecos
+        .map(e => ({
+          ...e,
+          nomePrincipal: extrairNomePrincipal(e.rua),
+          score: 0
+        }))
+        .filter(e => {
+          const ruaNormalizada = normalizarParaBusca(e.rua);
+          const principalNormalizada = normalizarParaBusca(e.nomePrincipal);
+          
+          // Prioridade 1: Nome principal começa com o termo
+          if (principalNormalizada.startsWith(termoNormalizado) && termoNormalizado.length > 2) {
+            e.score += 100;
+            return true;
+          }
+          
+          // Prioridade 2: Rua começa com o termo
+          if (ruaNormalizada.startsWith(termoNormalizado) && termoNormalizado.length > 2) {
+            e.score += 80;
+            return true;
+          }
+          
+          // Prioridade 3: Contém o termo
+          if (principalNormalizada.includes(termoNormalizado)) {
+            e.score += 50;
+            return true;
+          }
+          
+          // Prioridade 4: Correspondência fuzzy
+          const similaridade = calcularSimilaridade(principalNormalizada, termoNormalizado);
+          if (similaridade > 0.65) {
+            e.score += similaridade * 40;
+            return true;
+          }
+          
+          return false;
+        })
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 8);
+      
+      if (sugestoes.length === 0) {
+        sugestoesContainer.style.display = 'none';
+        return;
+      }
+      
+      sugestoesLista.innerHTML = '';
+      
+      sugestoes.forEach(end => {
+        const div = document.createElement('div');
+        div.className = 'sugestao-item';
+        
+        // Destaca o termo buscado
+        let ruaDestaque = end.rua;
+        const termoDestacar = termoNormalizado;
+        
+        if (termoDestacar.length > 2) {
+          const regex = new RegExp(`(${termoDestacar})`, 'gi');
+          ruaDestaque = end.rua.replace(regex, '<span style="background: rgba(140,108,255,0.3); color: white; padding: 0 2px; border-radius: 3px;">$1</span>');
+        }
+        
+        div.innerHTML = `
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="color: #8c6cff;">📍</span>
+            <strong>${ruaDestaque}</strong>
+          </div>
+          ${end.faixa ? `<small style="display: block; margin-top: 4px; color: #8f8ab8; font-size: 0.75rem;">${end.faixa}</small>` : ''}
+          ${end.nomePrincipal !== normalizarParaBusca(end.rua) ? 
+            `<small style="display: block; color: #b4b0d9; font-size: 0.7rem; margin-top: 2px;">🔍 ${end.nomePrincipal}</small>` : ''}
+        `;
+        
+        div.onclick = () => {
+          enderecoInput.value = end.rua;
+          sugestoesContainer.style.display = 'none';
+          consultarCEP();
+        };
+        
+        sugestoesLista.appendChild(div);
+      });
+      
+      sugestoesContainer.style.display = 'block';
+    }, 250);
+  });
+  
+  // Fechar sugestões ao clicar fora
+  document.addEventListener('click', function(e) {
+    if (!enderecoInput.contains(e.target) && !sugestoesContainer.contains(e.target)) {
+      sugestoesContainer.style.display = 'none';
+      ultimaBusca = ''; // Reseta cache
+    }
+  });
+}
+
+// Adiciona estilos CSS para os novos elementos
+function adicionarEstilosConsultaCEP() {
+  const style = document.createElement('style');
+  style.textContent = `
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    
+    .high-relevance {
+      border-left: 4px solid #8c6cff !important;
+      background: linear-gradient(160deg, #161230, #0f0c22) !important;
+    }
+    
+    .sugestao-item {
+      transition: all 0.2s ease;
+      border-bottom: 1px solid rgba(140,108,255,0.1);
+    }
+    
+    .sugestao-item:last-child {
+      border-bottom: none;
+    }
+    
+    .sugestao-item:hover {
+      background: rgba(140,108,255,0.15);
+      transform: translateX(5px);
+    }
+    
+    .btn-copiar, .btn-maps {
+      transition: transform 0.2s ease;
+    }
+    
+    .btn-copiar:hover, .btn-maps:hover {
+      transform: scale(1.02);
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+// Inicializa quando o DOM estiver pronto
+document.addEventListener('DOMContentLoaded', function() {
+  inicializarAutoComplete();
+  adicionarEstilosConsultaCEP();
+});
